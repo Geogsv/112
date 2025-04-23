@@ -12,7 +12,6 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 const dbFileName = "service.db"
 
@@ -35,14 +34,10 @@ func checkAndCreateUploadsDir() {
 	}
 }
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Не удалось загрузить файл .env: %v", err)
-	}
 	checkAndCreateUploadsDir()
 
 	// Инициализация базы данных
-	err = database.InitDB(dbFileName)
+	err := database.InitDB(dbFileName)
 	if err != nil {
 		log.Fatalf("Ошибка инициализации базы данных: %v", err)
 	}
