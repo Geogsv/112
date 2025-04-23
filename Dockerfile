@@ -18,7 +18,7 @@
     # Собираем приложение.
     # -ldflags="-w -s" уменьшает размер бинарника (удаляет отладочную информацию)
     # CGO_ENABLED=0 создает статически скомпилированный бинарник без C-зависимостей (важно для Alpine)
-    RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /imagecleaner ./cmd/imagecleaner/main.go
+    RUN go build -ldflags="-w -s" -o /imagecleaner ./cmd/imagecleaner/main.go
     
     
     # --- Этап выполнения ---
