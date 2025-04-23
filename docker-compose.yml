@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # Сервис Go-приложения
+  app:
+    build: .
+    container_name: imagecleaner_app
+    restart: unless-stopped
+    environment:
+      - GIN_MODE=release
+      - COOKIE_SECRET=${COOKIE_SECRET}
+      - APP_BASE_URL=http://${VPS_PUBLIC_IP}
+    volumes:
+      # Путь к БД теперь относительно WORKDIR (/app)
+      - db-data:/app
+      # Путь к uploads теперь относительно WORKDIR (/app)
+      - uploads-data:/app/uploads
+    expose:
+      - "8080" # Порт внутри сети Docker
+    networks:
+      - app-network
+
+  # Сервис Nginx
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: imagecleaner_nginx
+    restart: unless-stopped
+    ports:
+      # Публикуем порт 80 контейнера Nginx на порт 80 хоста VPS
+      - "80:80"
+      # Порт 443 НЕ публикуем
+    volumes:
+      # Монтируем нашу упрощенную конфигурацию Nginx
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Монтируем статические файлы
+      - ./web/static:/usr/share/nginx/html/static:ro
+      # Volumes для Certbot НЕ нужны
+    depends_on:
+      - app
+    networks:
+      - app-network
+
+# Сеть
+networks:
+  app-network:
+    driver: bridge
+
+# Volumes для данных (без Certbot)
+volumes:
+  db-data:
+  uploads-data:
