@@ -23,7 +23,7 @@
     
     # --- Этап выполнения ---
     FROM alpine:latest
-    
+    RUN apk update && apk add --no-cache libc6-compat libstdc++ sqlite-libs ca-certificates && update-ca-certificates
     # Устанавливаем рабочую директорию
     WORKDIR /app
     
