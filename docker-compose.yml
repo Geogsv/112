@@ -16,7 +16,7 @@ services:
       # Связываем папку ./data/uploads на хосте с /app/uploads внутри контейнера
       - ./data/uploads:/app/uploads
       # Связываем файл ./data/service.db на хосте с /app/service.db внутри контейнера
-      - ./data/service.db:/app/service.db
+      - ./service.db:/app/service.db
       # Монтируем папку со статикой для возможного доступа (read-only)
       # Может быть полезно, если Nginx будет ее копировать, но здесь Nginx монтирует ее напрямую с хоста
       - ./web/static:/app/web/static:ro
