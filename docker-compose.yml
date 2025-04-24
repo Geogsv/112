@@ -1,50 +1,15 @@
-# Версия синтаксиса Docker Compose
 version: '3.8'
 
-# Описание сервисов (контейнеров)
 services:
-  # Сервис вашего Go-приложения
   imagecleaner:
-    # Инструкция по сборке образа: использовать Dockerfile из текущей директории (.)
     build: .
-    # Имя контейнера для удобства идентификации
     container_name: imagecleaner_app
-    # Политика перезапуска: всегда перезапускать, если контейнер остановился не вручную
-    restart: unless-stopped
-    # Тома (volumes) для сохранения данных вне контейнера:
-    volumes:
-      # Связываем папку ./data/uploads на хосте с /app/uploads внутри контейнера
-      - ./data/uploads:/app/uploads
-      # Связываем файл ./data/service.db на хосте с /app/service.db внутри контейнера
-      - ./service.db:/app/service.db
-      # Монтируем папку со статикой для возможного доступа (read-only)
-      # Может быть полезно, если Nginx будет ее копировать, но здесь Nginx монтирует ее напрямую с хоста
-      - ./web/static:/app/web/static:ro
-    # Файл, из которого берутся переменные окружения для этого контейнера
-    env_file:
-      - .env
-    # Приложение НЕ публикует порт наружу, доступ только через Nginx по сети Docker
-
-  # Сервис Nginx (обратный прокси)
-  nginx:
-    # Используем готовый официальный образ Nginx на Alpine
-    image: nginx:1.24-alpine # Рекомендуется использовать конкретную версию
-    # Имя контейнера
-    container_name: imagecleaner_nginx
-    # Политика перезапуска
-    restart: unless-stopped
-    # Публикация портов: порт 80 хоста (VPS) связывается с портом 80 контейнера Nginx
     ports:
-      - "80:80"
-    # Тома для Nginx:
-    volumes:
-      # Монтируем наш кастомный nginx.conf внутрь контейнера (read-only)
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      # Монтируем папку со статикой с хоста внутрь Nginx,
-      # чтобы Nginx мог её раздавать напрямую. Путь должен совпадать с 'root' + 'location /static/' в nginx.conf
-      - ./web/static:/usr/share/nginx/html/static:ro
-      # Опционально: монтировать папку для логов Nginx на хост
-      # - ./logs/nginx:/var/log/nginx
-    # Зависимость: Запускать контейнер Nginx только ПОСЛЕ того, как запустится imagecleaner
-    depends_on:
-      - imagecleaner
+      - "80:8080" # Маппинг: порт_на_хосте:порт_в_контейнере
+    environment:
+      # Можно передать переменные окружения, если они нужны приложению
+      # Обязательно установите, если ваш код читает BASE_URL!
+      - BASE_URL=http://<YOUR_VPS_IP_OR_DOMAIN> # ЗАМЕНИТЬ!
+      # Если секрет сессии хранится в переменной окружения:
+      # - COOKIE_SECRET=ваш_очень_секретный_ключ_из_env
+    restart: always
