@@ -6,10 +6,6 @@ services:
     container_name: imagecleaner_app
     ports:
       - "80:8080" # Маппинг: порт_на_хосте:порт_в_контейнере
-    environment:
-      # Можно передать переменные окружения, если они нужны приложению
-      # Обязательно установите, если ваш код читает BASE_URL!
-      - BASE_URL=http://<YOUR_VPS_IP_OR_DOMAIN> # ЗАМЕНИТЬ!
-      # Если секрет сессии хранится в переменной окружения:
-      # - COOKIE_SECRET=ваш_очень_секретный_ключ_из_env
+    env_file:
+      - .env
     restart: always
