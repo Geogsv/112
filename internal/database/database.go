@@ -11,7 +11,7 @@ import (
 	// Пустой импорт "_" используется для драйверов баз данных.
 	// Мы импортируем пакет ради "побочного эффекта" - регистрации драйвера sqlite3
 	// в пакете database/sql. Сами функции из пакета go-sqlite3 напрямую мы вызывать не будем.
-	_ "github.com/mattn/go-sqlite3" // Библиотека для работы с базой данных SQLite3
+	_ "modernc.org/sqlite" // Библиотека для работы с базой данных SQLite3
 )
 
 // DB - это глобальная переменная для хранения объекта пула соединений с БД.
@@ -28,7 +28,7 @@ func InitDB(dataSourceName string) error {
 	var err error
 	// sql.Open не устанавливает соединение сразу, а только подготавливает объект *sql.DB.
 	// Первый аргумент - имя драйвера, который мы зарегистрировали через пустой импорт.
-	DB, err = sql.Open("sqlite3", dataSourceName)
+	DB, err = sql.Open("sqlite", dataSourceName)
 	if err != nil {
 		return fmt.Errorf("Ошибка при открытии %s: %w", dataSourceName, err)
 	}
