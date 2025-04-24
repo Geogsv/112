@@ -4,7 +4,6 @@ import (
 	"imagecleaner/internal/database" // Импортируем пакет для работы с базой данных
 	"imagecleaner/internal/handlers" // Импортируем пакет для работы с обработчиками запросов
 	"imagecleaner/internal/middleware"
-	"imagecleaner/internal/services"
 	"log"
 	"net/http"
 	"os"
@@ -13,38 +12,41 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
-const dbFileName = "service.db"
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	log.Printf("Переменная окружения %s не установлена, используется значение по умолчанию: %s", key, fallback)
+	return fallback
+}
+
 
 // checkAndCreateUploadsDir проверяет наличие папки uploads и создает ее при необходимости.
-func checkAndCreateUploadsDir() {
-	uploadDir := services.UploadPath // Используем путь из services
-	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		log.Printf("Папка %s не найдена, создаем...", uploadDir)
-		err = os.Mkdir(uploadDir, 0755) // 0755 - права доступа (владелец rwx, группа rx, остальные rx)
-		if err != nil {
-			// Если не удалось создать папку - это критично
-			log.Fatalf("КРИТИЧЕСКАЯ ОШИБКА: не удалось создать папку %s: %v", uploadDir, err)
-		}
-		log.Printf("Папка %s успешно создана.", uploadDir)
-	} else if err != nil {
-		// Другая ошибка при проверке папки (например, нет прав доступа)
-		log.Fatalf("КРИТИЧЕСКАЯ ОШИБКА: ошибка при проверке папки %s: %v", uploadDir, err)
-	} else {
-		log.Printf("Папка %s найдена.", uploadDir)
-	}
-}
+// func checkAndCreateUploadsDir(uploadDir string) {
+// 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
+// 		log.Printf("Папка %s не найдена, создаем...", uploadDir)
+// 		// Используем MkdirAll на случай, если и родительских папок нет
+// 		if err := os.MkdirAll(uploadDir, 0755); err != nil {
+// 			log.Fatalf("КРИТИЧЕСКАЯ ОШИБКА: не удалось создать папку %s: %v", uploadDir, err)
+// 		}
+// 		log.Printf("Папка %s успешно создана.", uploadDir)
+// 	} else if err != nil {
+// 		log.Fatalf("КРИТИЧЕСКАЯ ОШИБКА: ошибка при проверке папки %s: %v", uploadDir, err)
+// 	} else {
+// 		log.Printf("Папка %s найдена.", uploadDir)
+// 	}
+// }
 func main() {
-	checkAndCreateUploadsDir()
+	cookieSecret := getEnv("COOKIE_SECRET", "fallback-secret-change-in-production")
+	dbPath := getEnv("DB_PATH", "/app/service.db") // Путь ВНУТРИ контейнера
+	listenPort := getEnv("LISTEN_PORT", "8080")
 
 	// Инициализация базы данных
-	err := database.InitDB(dbFileName)
+	err := database.InitDB(dbPath)
 	if err != nil {
 		log.Fatalf("Ошибка инициализации базы данных: %v", err)
 	}
-	cookieSecret := os.Getenv("COOKIE_SECRET")
-	if cookieSecret == "" {
-		log.Fatal("Не удалось получить секретный ключ из переменной окружения COOKIE_SECRET")
-	}
+
 	gin.SetMode(gin.ReleaseMode)
 	// Создаем роутер с настройками по умолчанию
 	router := gin.Default()
@@ -95,13 +97,13 @@ func main() {
         protected.POST("/logout", handlers.HandleLogout)
     }
 	// Конец ЗГРУППЫ
-
+	listenAddr := ":" + listenPort
 	// ЛОгирование работы сервера
-	log.Println("Сервер запускаеться на порту :8080")
+	log.Printf("Сервер запускаеться на порту :%s", listenAddr)
 
 	// Запускаем сервер на порту 8080
 	// если порт занят или возникла другая ошибка, то программа завершится с ошибкой
-	err = router.Run(":8080")
+	err = router.Run(listenAddr)
 	if err != nil {
 		log.Fatalf("Не удалось запустить сервер: %v", err)
 	}

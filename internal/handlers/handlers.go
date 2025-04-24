@@ -20,6 +20,14 @@ import (
 const MaxUploadSize = 10 << 20 // 10 МБ
 const MaxFiles = 10 // Максимальное количество загружаемых файлов
 
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	// Лог не нужен здесь, есть в main
+	return fallback
+}
+
 func ShowLoginPage(c *gin.Context) {
 	// c.HTML рендерит шаблон.
 	// http.StatusOK - код ответа 200 OK.
@@ -258,7 +266,7 @@ func HandleUpload(c *gin.Context) {
 	// 3. Обрабатываем каждый файл в цикле
 	var successURLs []string
 	var errorMessages []string
-
+	uploadPath := getEnv("UPLOAD_PATH", "/app/uploads")
 	for _, fileHeader := range files {
 		log.Printf("Обработка файла: %s, Размер: %d (UserID: %d)",
 			fileHeader.Filename, fileHeader.Size, userID64)
@@ -270,7 +278,7 @@ func HandleUpload(c *gin.Context) {
         }
 
 		// 3.1. Обработка и сохранение
-		storedFilename, err := services.ProcessAndSaveImage(fileHeader)
+		storedFilename, err := services.ProcessAndSaveImage(fileHeader, uploadPath)
 		if err != nil {
 			log.Printf("Ошибка обработки/сохранения файла '%s' для userID %d: %v", fileHeader.Filename, userID64, err)
 			errorMessages = append(errorMessages, fmt.Sprintf("Файл '%s': %s", fileHeader.Filename, err.Error()))
@@ -296,8 +304,11 @@ func HandleUpload(c *gin.Context) {
 		}
 
 		// 3.4. Формирование URL и добавление в список успешных
-		baseURL := os.Getenv("APP_BASE_URL")
-		//baseURL := "http://localhost:8080" // Из конфигурации!
+		baseURL := os.Getenv("BASE_URL")
+		if baseURL == "" {
+			baseURL = "http://localhost:8080" // Fallback
+			log.Printf("ПРЕДУПРЕЖДЕНИЕ: Переменная окружения BASE_URL не установлена, используется fallback '%s'", baseURL)
+		}
 		viewURL := fmt.Sprintf("%s/view/%s", baseURL, accessToken)
 		successURLs = append(successURLs, viewURL)
 		log.Printf("Файл '%s' успешно обработан userID %d. URL: %s", fileHeader.Filename, userID64, viewURL)
@@ -319,8 +330,9 @@ func redirectWithErrors(c *gin.Context, errors []string) {
 // Вспомогательная функция для очистки файла при ошибке
 
 func cleanupFile(filename string) {
+	uploadPath := getEnv("UPLOAD_PATH", "/app/uploads")
 	if filename != "" {
-		err := os.Remove(filepath.Join(services.UploadPath, filename))
+		err := os.Remove(filepath.Join(uploadPath, filename))
 		if err != nil {
 			log.Printf("ПРЕДУПРЕЖДЕНИЕ: не удалось удалить файл %s после ошибки: %v", filename, err)
 		} else {
@@ -404,7 +416,8 @@ func HandleConfirmView(c *gin.Context) {
 	}
 
 	// 4. Отправляем файл пользователю
-	filePath := filepath.Join(services.UploadPath, img.StoredFilename)
+	uploadPath := getEnv("UPLOAD_PATH", "/app/uploads")
+	filePath := filepath.Join(uploadPath, img.StoredFilename)
 
 	// Устанавливаем заголовки для предотвращения кэширования
 	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0")

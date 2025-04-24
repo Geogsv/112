@@ -1,54 +1,56 @@
 # --- Этап сборки ---
-    FROM golang:1.24-alpine AS builder
+# Используем официальный образ Go на базе Alpine для минимизации размера
+FROM golang:1.24-alpine AS builder
 
-    # Устанавливаем рабочую директорию внутри контейнера
-    WORKDIR /build
-    
-    # Копируем файлы управления зависимостями
-    COPY go.mod go.sum ./
-    # Скачиваем зависимости (этот слой будет кешироваться)
-    RUN go mod download
-    
-    # Копируем исходный код проекта
-    COPY . .
-    
-    # Устанавливаем GIN_MODE=release для сборки (если это влияет на сборку, обычно нет)
-    # ENV GIN_MODE=release
-    
-    # Собираем приложение.
-    # -ldflags="-w -s" уменьшает размер бинарника (удаляет отладочную информацию)
-    # CGO_ENABLED=0 создает статически скомпилированный бинарник без C-зависимостей (важно для Alpine)
-    RUN go build -ldflags="-w -s" -o /imagecleaner ./cmd/imagecleaner/main.go
-    
-    
-    # --- Этап выполнения ---
-    FROM alpine:latest
-    RUN apk update && apk add --no-cache libc6-compat libstdc++ sqlite-libs ca-certificates && update-ca-certificates
-    # Устанавливаем рабочую директорию
-    WORKDIR /app
-    
-    # Копируем ТОЛЬКО скомпилированный бинарник из этапа сборки
-    COPY --from=builder /imagecleaner /app/imagecleaner
-    
-    # Копируем статические файлы и шаблоны
-    COPY web/templates /app/web/templates
-    COPY web/static /app/web/static
-    
-    # Создаем папку для загрузок ВНУТРИ контейнера (данные будут в volume)
-    # RUN mkdir -p /app/uploads && chown nobody:nogroup /app/uploads
-    # Создаем папку для БД ВНУТРИ контейнера (данные будут в volume)
-    # RUN mkdir -p /app/db && chown nobody:nogroup /app/db
-    # Примечание: Volumes в docker-compose сами создадут папки, если их нет.
-    # chown нужен, если будем запускать от имени non-root user.
-    
-    # Указываем порт, который слушает наше приложение внутри контейнера
-    EXPOSE 8080
-    
-    # Пользователь без прав root (рекомендуется)
-    # Создадим пользователя и группу 'appuser'
-    # RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-    # USER appuser
-    
-    # Команда для запуска приложения при старте контейнера
-    # Путь к БД и папке uploads будут определяться относительно WORKDIR /app
-    CMD ["/app/imagecleaner"]
+# Устанавливаем зависимости, необходимые для статической сборки (если CGO_ENABLED=0)
+RUN apk add --no-cache gcc musl-dev
+
+# Устанавливаем рабочую директорию внутри контейнера сборки
+WORKDIR /app
+
+# Копируем файлы зависимостей
+COPY go.mod go.sum ./
+# Скачиваем зависимости (этот слой будет кешироваться Docker'ом)
+RUN go mod download
+
+# Копируем весь остальной исходный код приложения
+COPY . .
+
+# Собираем статически линкованный бинарник для Linux
+# CGO_ENABLED=0 - отключаем CGO для статической линковки
+# GOOS=linux - собираем для Linux (даже если ваша локальная машина другая)
+# -ldflags="-s -w" - убираем отладочные символы для уменьшения размера
+# -o /imagecleaner - имя выходного файла внутри этого этапа сборки
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /imagecleaner ./cmd/imagecleaner/main.go
+
+# --- Этап выполнения ---
+# Используем минимальный базовый образ Alpine
+FROM alpine:latest
+
+# Устанавливаем необходимые пакеты:
+# tzdata - для корректной работы с временными зонами (если ваше приложение их использует)
+# ca-certificates - для проверки SSL/TLS сертификатов (если приложение ходит по HTTPS к другим сервисам)
+RUN apk add --no-cache tzdata ca-certificates
+
+# Устанавливаем рабочую директорию внутри конечного контейнера
+WORKDIR /app
+
+# Копируем скомпилированный бинарник из этапа 'builder'
+COPY --from=builder /imagecleaner /app/imagecleaner
+
+# Копируем папку с веб-шаблонами и статикой
+COPY web/ ./web/
+
+# Создаем директорию для загрузок ВНУТРИ контейнера и назначаем права
+# Сами данные будут храниться в volume, но папка должна существовать с нужными правами
+RUN mkdir -p /app/uploads && chown nobody:nogroup /app/uploads
+# База данных будет монтироваться как volume в /app/service.db
+
+# Указываем пользователя с минимальными правами для запуска приложения
+USER nobody:nogroup
+
+# Информируем Docker, что контейнер будет слушать этот порт (НЕ публикует его)
+EXPOSE 8080
+
+# Команда по умолчанию для запуска приложения при старте контейнера
+ENTRYPOINT ["/app/imagecleaner"]

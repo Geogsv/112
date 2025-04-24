@@ -20,7 +20,6 @@ import (
 )
 
 // UploadPath - путь к папке для сохранения загруженных файлов.
-const UploadPath = "./upload"
 // AllowedImageTypes - карта разрешенных MIME-типов изображений.
 var AllowebImageTypes = map[string]bool{
 	"image/jpeg":  true,
@@ -28,7 +27,7 @@ var AllowebImageTypes = map[string]bool{
 	"image/gif":   true,
 }
 
-func ProcessAndSaveImage(fileHeader *multipart.FileHeader) (storedFilename string, err error) {
+func ProcessAndSaveImage(fileHeader *multipart.FileHeader, uploadDir string) (storedFilename string, err error) {
 	//Открываем загруженный файл
 	file, err := fileHeader.Open()
 	if err != nil {
@@ -67,7 +66,7 @@ func ProcessAndSaveImage(fileHeader *multipart.FileHeader) (storedFilename strin
 	// Используем расширение, определенное декодером, а не из исходного имени файла
 	fileExtension := "." + detectedFormat
 	storedFilename = randomName + fileExtension
-	filePath := filepath.Join(UploadPath, storedFilename)
+	filePath := filepath.Join(uploadDir, storedFilename)
 
 	//Создаем новый файл на сервере
 	outFile, err := os.Create(filePath)
