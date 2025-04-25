@@ -3,7 +3,6 @@ package main
 import (
 	// Импорт стандартных библиотек
 	"log"        // Для логирования
-	"net/http"   // Для кодов статуса HTTP и SameSite
 	"os"         // Для работы с переменными окружения и файловой системой
 	"path/filepath" // Для работы с путями к файлам (получение директории)
 
@@ -125,10 +124,9 @@ func main() {
 		HttpOnly: true,
 		// Secure: true - Cookie будет отправляться браузером ТОЛЬКО по HTTPS соединению.
 		// ВАЖНО: Требует наличия HTTPS на Nginx. Для локальной разработки без HTTPS установите false.
-		Secure: true,
+		Secure: false,
 		// SameSite: Lax - Защищает от CSRF для GET-запросов и некоторых других случаев.
 		// Strict был бы еще безопаснее, но может ломать переходы с других сайтов.
-		SameSite: http.SameSiteLaxMode,
 	})
 
 	// --- 3. Подключение Middleware ---
