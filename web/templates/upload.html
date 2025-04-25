@@ -12,7 +12,9 @@
         <!-- Шапка с приветствием и выходом -->
          <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary">
             <h1 class="h4 text-body-secondary">Добро пожаловать, <strong class="text-light">{{ .username }}</strong>!</h1>
+            <!-- Форма выхода -->
             <form action="/logout" method="post">
+                <!-- CSRF поле УДАЛЕНО -->
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Выйти</button>
             </form>
         </div>
@@ -24,10 +26,11 @@
             </div>
             <div class="card-body">
                 <p class="card-text text-body-secondary">
-                    Выберите до 10 изображений (JPEG, PNG, GIF). Все метаданные (EXIF, GPS и т.д.) будут удалены.
+                    Выберите до 10 изображений (JPEG, PNG, GIF). Макс. размер файла: 10 МБ. Все метаданные (EXIF, GPS и т.д.) будут удалены.
                     Для каждого успешно загруженного файла вы получите уникальную одноразовую ссылку.
                 </p>
                 <form action="/upload" method="post" enctype="multipart/form-data">
+                    <!-- CSRF поле УДАЛЕНО -->
                     <div class="mb-3">
                         <label for="imagefiles" class="form-label visually-hidden">Выберите файлы:</label>
                         <input class="form-control form-control-lg" type="file" id="imagefiles" name="imagefiles" accept="image/jpeg, image/png, image/gif" required multiple>
@@ -37,32 +40,29 @@
             </div>
         </div>
 
-        <!-- Результаты загрузки -->
+        <!-- Результаты загрузки (из Flash сообщений) -->
         <div class="upload-results">
             {{ if or .errors .success_urls }}<h3 class="h5 mb-3">Результаты последней загрузки:</h3>{{ end }}
 
             {{ if .errors }}
-            <div class="mb-3">
-                 <strong class="text-danger d-block mb-2">Произошли ошибки:</strong>
+            <div class="alert alert-danger small mb-3" role="alert">
+                 <strong class="d-block mb-2">Произошли ошибки:</strong>
                  <ul>
                     {{ range .errors }}
-                        <li class="result-error">
-                           <span class="filename">Ошибка:</span>
-                           {{ . }}
-                        </li>
+                        <li>{{ . }}</li>
                     {{ end }}
                 </ul>
             </div>
             {{ end }}
 
             {{ if .success_urls }}
-             <div class="mb-3">
-                <strong class="text-success d-block mb-2">Успешно загружено:</strong>
+             <div class="alert alert-success small mb-3" role="alert">
+                <strong class="d-block mb-2">Успешно загружено:</strong>
                 <ul>
-                {{ range .success_urls }}
-                    <li class="result-success">
-                        <span class="filename">Ссылка (кликните для выделения):</span>
-                        <input type="text" class="form-control form-control-sm" value="{{ . }}" readonly onclick="this.select(); document.execCommand('copy'); /* Копирование может не сработать везде */ alert('Ссылка скопирована');">
+                {{ range $index, $url := .success_urls }}
+                    <li>
+                        <label for="success-url-{{$index}}" class="form-label-sm">Ссылка (кликните для копирования):</label>
+                        <input type="text" id="success-url-{{$index}}" class="form-control form-control-sm" value="{{ $url }}" readonly onclick="this.select(); try { document.execCommand('copy'); alert('Ссылка скопирована!'); } catch (err) { alert('Не удалось скопировать ссылку.'); }">
                     </li>
                 {{ end }}
                 </ul>

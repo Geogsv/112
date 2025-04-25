@@ -11,7 +11,7 @@
     <div class="container col-xl-10 col-xxl-8 px-4 py-5">
         <div class="row align-items-center g-lg-5 py-5">
             <div class="col-lg-7 text-center text-lg-start">
-                <h1 class="display-4 fw-bold lh-1 mb-3 app-header">GeoCode</h1>
+                 <h1 class="display-4 fw-bold lh-1 mb-3 app-header">ImgCleaner</h1>
                 <p class="col-lg-10 fs-5 text-body-secondary">
                     Создайте аккаунт для безопасной загрузки изображений,
                     очистки метаданных и получения одноразовых ссылок для обмена.
@@ -22,6 +22,8 @@
                     <div class="card-body p-4 p-md-5">
                          <h2 class="card-title text-center mb-4 fs-4">Регистрация</h2>
                         <form action="/register" method="post">
+                            <!-- CSRF поле УДАЛЕНО -->
+                            {{/* Вывод flash сообщений */}}
                             {{ if .error }}
                             <div class="alert alert-danger small mb-3" role="alert"> {{ .error }} </div>
                             {{ end }}
@@ -30,15 +32,15 @@
                             {{ end }}
 
                             <div class="form-floating mb-3">
-                                <input type="text" class="form-control" id="username" name="username" placeholder="Имя пользователя" required autofocus value="{{ .username }}">
+                                <input type="text" class="form-control {{ if .error}}is-invalid{{end}}" id="username" name="username" placeholder="Имя пользователя" required autofocus value="{{ .username }}">
                                 <label for="username">Имя пользователя</label>
                             </div>
                             <div class="form-floating mb-3">
-                                <input type="password" class="form-control" id="password" name="password" placeholder="Пароль (минимум 8 символов)" required>
+                                <input type="password" class="form-control {{ if or (eq .error "Пароли не совпадают") (eq .error "Пароль должен быть не менее 8 символов") (eq .error "Все поля должны быть заполнены")}}is-invalid{{end}}" id="password" name="password" placeholder="Пароль (минимум 8 символов)" required>
                                 <label for="password">Пароль</label>
                             </div>
                             <div class="form-floating mb-3">
-                                <input type="password" class="form-control" id="password_confirm" name="password_confirm" placeholder="Повторите пароль" required>
+                                <input type="password" class="form-control {{ if or (eq .error "Пароли не совпадают") (eq .error "Все поля должны быть заполнены")}}is-invalid{{end}}" id="password_confirm" name="password_confirm" placeholder="Повторите пароль" required>
                                 <label for="password_confirm">Повторите пароль</label>
                             </div>
                             <button class="w-100 btn btn-lg btn-primary" type="submit">Зарегистрироваться</button>
