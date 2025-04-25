@@ -1,112 +1,183 @@
 package services
 
 import (
-	"fmt"
-	"image"
-	"image/gif"
-	_ "image/gif"
-	"image/jpeg"
-	_ "image/jpeg"
-	"image/png"
-	_ "image/png"
+	// Стандартные библиотеки
+	"fmt"      // Для форматирования строк и ошибок
+	"image"    // Основной пакет для работы с изображениями
+	"io"       // Для интерфейсов Reader/Seeker и константы EOF
+	"log"      // Для логирования
+	"mime/multipart" // Для работы с multipart-формами (загрузка файлов)
+	"net/http" // Для функции DetectContentType
+	"os"       // Для работы с файлами (Create, Remove)
+	"path/filepath" // Для работы с путями к файлам (Join)
 
-	"io"
-	"log"
-	"mime/multipart"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
+	// Пакеты для поддержки форматов изображений.
+	// Используется пустой импорт (_) для регистрации соответствующих декодеров/кодеров
+	// в пакете "image". Без этих импортов image.Decode и функции Encode не будут работать
+	// для данных форматов.
+	"image/gif"  // Для кодирования GIF
+	_ "image/gif" // Для декодирования GIF
+	"image/jpeg" // Для кодирования JPEG
+	_ "image/jpeg"// Для декодирования JPEG
+	"image/png"  // Для кодирования PNG
+	_ "image/png" // Для декодирования PNG
 )
 
-// UploadPath - путь к папке для сохранения загруженных файлов.
-// AllowedImageTypes - карта разрешенных MIME-типов изображений.
-var AllowebImageTypes = map[string]bool{
-	"image/jpeg":  true,
-	"image/png":   true,
-	"image/gif":   true,
+// AllowedImageTypes - карта (map) разрешенных MIME-типов изображений.
+// Ключ - строка MIME-типа (например, "image/jpeg").
+// Значение - булево (true означает, что тип разрешен).
+// Используется для проверки типа файла *после* определения его по содержимому (DetectContentType).
+var AllowedImageTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	// Можно добавить другие типы, если нужно, например:
+	// "image/webp": true, // Потребует импорта пакета для WebP
 }
 
+// ProcessAndSaveImage обрабатывает загруженный файл изображения.
+// Выполняет следующие шаги:
+// 1. Открывает файл из multipart.FileHeader.
+// 2. Читает первые 512 байт для определения MIME-типа с помощью http.DetectContentType.
+// 3. Проверяет, соответствует ли определенный MIME-тип разрешенным в AllowedImageTypes.
+// 4. Декодирует изображение с помощью image.Decode. Этот шаг важен, так как он:
+//    а) Проверяет, является ли файл действительно изображением поддерживаемого формата.
+//    б) Отбрасывает большинство метаданных (EXIF, GPS и т.д.), так как декодируется только пиксельная информация.
+//    в) Возвращает фактический формат изображения ("jpeg", "png", "gif").
+// 5. Генерирует уникальное имя файла на основе случайного токена и фактического формата.
+// 6. Создает новый файл на сервере по указанному пути (`uploadDir`).
+// 7. Перекодирует декодированное изображение в его исходном формате (или можно принудительно в один формат, например, JPEG)
+//    и сохраняет в созданный файл.
+// Возвращает имя сохраненного файла (без пути) и ошибку (nil в случае успеха).
 func ProcessAndSaveImage(fileHeader *multipart.FileHeader, uploadDir string) (storedFilename string, err error) {
-	//Открываем загруженный файл
-	file, err := fileHeader.Open()
+	// 1. Открываем файл, предоставленный в заголовке multipart-формы.
+	file, err := fileHeader.Open() // Возвращает multipart.File, который реализует io.Reader, io.Seeker, io.Closer
 	if err != nil {
-		return "", fmt.Errorf("Не удалось открыть загруженный файл: %w", err)
+		return "", fmt.Errorf("не удалось открыть загруженный файл '%s': %w", fileHeader.Filename, err)
 	}
-	defer file.Close() //закрыли файл после использования
-	//Определяем реальный тип файла по первым 512 байтам
-	buffer := make([]byte, 512) //создаем буфер для чтения первых 512 байт файла
-	_, err = file.Read(buffer)
-	if err != nil && err != io.EOF { //EOF не ошибка, если файл меньше 512 байт
-		return "", fmt.Errorf("Не удалось прочитать первые 512 байт файла: %w", err)
-	}
-	// Сбрасываем указатель чтения обратно в начало файла!
-	_, err = file.Seek(0, io.SeekStart) //возвращаемся в начало файла
-	if err != nil {
-		return "", fmt.Errorf("Не удалось вернуть указатель файла в начало: %w", err)
+	// Гарантируем закрытие файла при выходе из функции.
+	defer file.Close()
 
+	// 2. Читаем начало файла для определения MIME-типа.
+	//    http.DetectContentType требует до 512 байт.
+	buffer := make([]byte, 512)
+	bytesRead, err := file.Read(buffer) // Читаем байты в буфер
+	// Обрабатываем ошибки чтения. io.EOF не является ошибкой, если файл меньше 512 байт.
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("не удалось прочитать начало файла '%s': %w", fileHeader.Filename, err)
 	}
-	contentType := http.DetectContentType(buffer)
-	//Проверяем, разрешен ли этот тип файла
-	if !AllowebImageTypes[contentType] {
-		return "", fmt.Errorf("Недопустимый тип файла: %s", contentType)
+	// Проверяем случай пустого файла (0 байт прочитано и достигнут конец файла)
+	if bytesRead == 0 && err == io.EOF {
+		return "", fmt.Errorf("файл '%s' пустой", fileHeader.Filename)
 	}
-	//Декодируем изображение. Это автоматически отбрасывает большинство метаданных.
+
+	// 2.1 Важно: Сбрасываем указатель чтения обратно в начало файла!
+	//     Потому что следующий шаг (image.Decode) должен читать файл с самого начала.
+	_, err = file.Seek(0, io.SeekStart) // io.SeekStart означает смещение от начала файла
+	if err != nil {
+		return "", fmt.Errorf("не удалось сбросить указатель чтения файла '%s' в начало: %w", fileHeader.Filename, err)
+	}
+
+	// 3. Определяем MIME-тип по прочитанным байтам.
+	//    Используем срез buffer[:bytesRead], чтобы передать только фактически прочитанные байты.
+	contentType := http.DetectContentType(buffer[:bytesRead])
+
+	// 3.1 Проверяем, разрешен ли определенный тип.
+	if !AllowedImageTypes[contentType] {
+		log.Printf("Файл '%s' отклонен: недопустимый MIME-тип '%s', определенный по содержимому.", fileHeader.Filename, contentType)
+		return "", fmt.Errorf("недопустимый тип файла: %s", contentType) // Возвращаем ошибку с указанием типа
+	}
+	log.Printf("Файл '%s' прошел проверку MIME-типа: '%s'", fileHeader.Filename, contentType)
+
+	// 4. Декодируем изображение.
+	//    image.Decode читает данные из file (io.Reader) и пытается определить формат
+	//    и декодировать его в объект image.Image.
+	//    Он возвращает декодированное изображение, строку с именем формата ("jpeg", "png", "gif") и ошибку.
 	img, detectedFormat, err := image.Decode(file)
 	if err != nil {
-		// Если image.Decode не справился, файл поврежден или не является изображением
-		return "", fmt.Errorf("Не удалось декодировать изображение: %w, формат: %s", err, detectedFormat)
-		}
-	log.Printf("Изображение успешно декодировано как: %s", detectedFormat)
-	//Генерируем уникальное имя файла для хранения
-	randomName, err := GenerateSecureToken(16)
-	if err != nil {
-		return "", fmt.Errorf("Не удалось сгенерировать случайное имя файла: %w", err)
+		// Если декодирование не удалось, файл либо поврежден, либо не является изображением
+		// поддерживаемого формата (несмотря на MIME-тип).
+		log.Printf("Ошибка декодирования файла '%s' как изображения: %v. Обнаруженный формат (если есть): %s", fileHeader.Filename, err, detectedFormat)
+		// Возвращаем пользователю более общую ошибку.
+		return "", fmt.Errorf("не удалось декодировать изображение: %w", err)
 	}
-	// Используем расширение, определенное декодером, а не из исходного имени файла
-	fileExtension := "." + detectedFormat
-	storedFilename = randomName + fileExtension
+	// Логируем успешное декодирование и определенный формат.
+	log.Printf("Файл '%s' успешно декодирован как формат '%s'. Размеры: %dx%d", fileHeader.Filename, detectedFormat, img.Bounds().Dx(), img.Bounds().Dy())
+
+	// 5. Генерируем уникальное имя файла.
+	//    Используем криптографически стойкий токен и добавляем расширение,
+	//    соответствующее *фактически* определенному формату изображения.
+	randomName, err := GenerateSecureToken(16) // 16 байт = ~22 символа base64
+	if err != nil {
+		// Ошибка генерации токена - это внутренняя проблема сервера.
+		return "", fmt.Errorf("не удалось сгенерировать имя файла: %w", err)
+	}
+	fileExtension := "." + detectedFormat // Например, ".jpeg", ".png"
+	storedFilename = randomName + fileExtension // Конечное имя файла, например, "aBcDeFgHiJkLmNoPqRsTuV.png"
+
+	// Формируем полный путь для сохранения файла.
 	filePath := filepath.Join(uploadDir, storedFilename)
 
-	//Создаем новый файл на сервере
+	// 6. Создаем новый файл на сервере для записи перекодированного изображения.
 	outFile, err := os.Create(filePath)
 	if err != nil {
-		return "", fmt.Errorf("Не удалось создать файл на сервере (%s): %w", filePath, err)
+		// Ошибка создания файла (например, нет прав на запись в uploadDir).
+		log.Printf("КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать файл на сервере: %s - %v", filePath, err)
+		return "", fmt.Errorf("не удалось создать файл на сервере: %w", err)
 	}
-	defer outFile.Close()
-	//Перекодируем и сохраняем изображение в новый файл
+	// Используем defer для гарантированного закрытия файла.
+	// Добавляем проверку ошибки при закрытии, т.к. она может указывать на проблемы с записью.
+	defer func() {
+		closeErr := outFile.Close()
+		// Если основной ошибки еще не было (err == nil), но при закрытии возникла ошибка,
+		// то присваиваем эту ошибку переменной err, которую вернет функция.
+		if err == nil && closeErr != nil {
+			log.Printf("Ошибка при закрытии файла %s после записи: %v", filePath, closeErr)
+			err = fmt.Errorf("ошибка при закрытии файла %s: %w", filePath, closeErr)
+			// Если была ошибка закрытия, лучше удалить потенциально недописанный файл.
+			errRemove := os.Remove(filePath)
+			if errRemove != nil {
+				log.Printf("Дополнительная ошибка: не удалось удалить файл %s после ошибки закрытия: %v", filePath, errRemove)
+			}
+		}
+	}()
+
+	// 7. Перекодируем декодированное изображение (img) и сохраняем его в outFile.
+	//    Выбираем кодер в зависимости от формата, определенного на шаге 4.
+	log.Printf("Начало кодирования файла '%s' (формат %s) в %s", fileHeader.Filename, detectedFormat, filePath)
 	switch detectedFormat {
-		case "jpeg":
-			err = jpeg.Encode(outFile, img, nil)
-		case "png":
-			err = png.Encode(outFile, img)
-		case "gif":
-			err = gif.Encode(outFile, img, nil)
-
-		default:
-			return "", fmt.Errorf("Неизвестный формат изображения: %s", detectedFormat)	
+	case "jpeg":
+		// jpeg.Encode записывает изображение в формате JPEG.
+		// Третий параметр (options) позволяет настроить качество (nil использует стандартное).
+		err = jpeg.Encode(outFile, img, nil)
+	case "png":
+		// png.Encode записывает изображение в формате PNG.
+		err = png.Encode(outFile, img)
+	case "gif":
+		// gif.Encode записывает изображение в формате GIF.
+		// Третий параметр (options) позволяет настроить палитру и другие параметры (nil использует стандартные).
+		err = gif.Encode(outFile, img, nil)
+	default:
+		// Эта ветка не должна быть достигнута, если image.Decode сработал корректно.
+		log.Printf("КРИТИЧЕСКАЯ ОШИБКА: Неподдерживаемый формат '%s' обнаружен ПОСЛЕ успешного декодирования файла '%s'. Это не должно происходить.", detectedFormat, fileHeader.Filename)
+		err = fmt.Errorf("неподдерживаемый формат изображения после декодирования: %s", detectedFormat)
 	}
-	// Если кодирование не удалось, удаляем созданный пустой файл
+
+	// Проверяем, произошла ли ошибка во время кодирования.
 	if err != nil {
-		os.Remove(filePath)
-		return "", fmt.Errorf("Не удалось закодировать и сохранить изображение: %w", err)
+		// Если кодирование не удалось, функция defer outFile.Close() все равно выполнится.
+		// Нам нужно явно удалить созданный, но, возможно, пустой или частично записанный файл.
+		log.Printf("Ошибка кодирования файла '%s' в формат %s, удаляем %s: %v", fileHeader.Filename, detectedFormat, filePath, err)
+		// Пытаемся удалить файл. Игнорируем ошибку удаления здесь, т.к. основная ошибка - это ошибка кодирования.
+		_ = os.Remove(filePath)
+		// Возвращаем ошибку кодирования.
+		return "", fmt.Errorf("не удалось закодировать и сохранить изображение: %w", err)
 	}
 
-	log.Printf("Изображение успешно закодировано и сохранено как %s", filePath)
-	// Возвращаем имя сохраненного файла и nil ошибку
-	return storedFilename, nil
-}
-//определяет Content-Type по расширению для ответа клиенту при просмотре.
-func GetImageContentType(filename string) string {
-	ext := strings.ToLower(filepath.Ext(filename))
-	switch ext {
-		case ".jpg", ".jpeg":
-			return "image/jpeg"
-		case ".png":
-			return "image/png"
-		case ".gif":
-			return "image/gif"
-     default:
-		return "application/octet-stream" // неизвестный тип файла
-	}
+	// Если кодирование прошло успешно.
+	log.Printf("Изображение '%s' успешно сохранено как %s", fileHeader.Filename, filePath)
+
+	// Возвращаем имя сохраненного файла (без пути) и nil в качестве ошибки.
+	// Ошибка при закрытии файла будет обработана в defer и присвоена переменной err, если возникнет.
+	return storedFilename, err
 }

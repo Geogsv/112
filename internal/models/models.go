@@ -1,28 +1,40 @@
 package models
 
 import (
-	"database/sql" // Нужен для типа sql.NullTime
-	"time"         // Нужен для типа time.Time
+	// Стандартные библиотеки
+	"database/sql" // Нужен для типа sql.NullTime, представляющего NULLable значения времени в БД
+	"time"         // Нужен для типа time.Time, представляющего временные метки
 )
+
 // User представляет пользователя в системе.
-// Поля структуры соответствуют столбцам в таблице 'users'.
-// Имена полей начинаются с большой буквы, чтобы они были экспортируемыми.
+// Поля структуры соответствуют столбцам в таблице 'users' базы данных.
+// Теги `json:"..."` используются для управления сериализацией/десериализацией в JSON (если потребуется API).
+// `json:"-"` означает, что поле будет проигнорировано при JSON-маршалинге.
 type User struct {
-	ID           int64  // Соответствует 'id INTEGER PRIMARY KEY'
-	Username     string // Соответствует 'username TEXT UNIQUE NOT NULL'
-	PasswordHash string // Соответствует 'password_hash TEXT NOT NULL'
-	// Мы не храним пароль в чистом виде! Только хеш.
+	ID           int64  `json:"id"`                 // Уникальный идентификатор пользователя (Primary Key)
+	Username     string `json:"username"`           // Имя пользователя (UNIQUE)
+	PasswordHash string `json:"-"`                  // Хеш пароля (НЕ ДОЛЖЕН передаваться клиенту)
 }
 
+// Image представляет запись об изображении в базе данных.
+// Поля соответствуют столбцам в таблице 'images'.
 type Image struct {
-	ID               int64        // 'id INTEGER PRIMARY KEY'
-	UserID           int64        // 'user_id INTEGER NOT NULL' (ссылка на User.ID)
-	OriginalFilename string       // 'original_filename TEXT'
-	StoredFilename   string       // 'stored_filename TEXT UNIQUE NOT NULL'
-	AccessToken      string       // 'access_token TEXT UNIQUE NOT NULL'
-	CreatedAt        time.Time    // 'created_at DATETIME' - Go автоматически преобразует
-	ViewedAt         sql.NullTime // 'viewed_at DATETIME NULL' - NullTime используется для полей, которые могут быть NULL в БД
-	Status           string       // 'status TEXT' ('pending', 'viewed', 'deleted')
+	ID               int64        `json:"id"`                 // Уникальный идентификатор изображения (Primary Key)
+	UserID           int64        `json:"user_id"`            // ID пользователя, загрузившего изображение (Foreign Key)
+	OriginalFilename string       `json:"original_filename"`  // Оригинальное имя файла, как оно было при загрузке
+	StoredFilename   string       `json:"-"`                  // Уникальное имя файла, под которым он сохранен на сервере (НЕ ДОЛЖНО передаваться клиенту)
+	AccessToken      string       `json:"access_token"`       // Уникальный токен для доступа к ссылке просмотра
+	CreatedAt        time.Time    `json:"created_at"`         // Время создания записи в БД
+	ViewedAt         sql.NullTime `json:"viewed_at"`          // Время первого просмотра (может быть NULL). Используется NullTime для корректной обработки NULL из БД.
+	Status           string       `json:"status"`             // Текущий статус изображения ('pending', 'viewed', 'deleted', 'delete_failed', 'error')
 }
-// Позже здесь можно добавить методы для этих структур, если понадобится.
-// Например, метод для проверки статуса картинки: func (img *Image) IsViewed() bool { ... }
+
+// Примечание: Позже здесь можно добавить методы для этих структур, если потребуется.
+// Например, метод для проверки статуса картинки:
+// func (img *Image) IsViewed() bool {
+//     return img.Status == "viewed" || img.ViewedAt.Valid
+// }
+// Или метод для проверки, действительна ли ссылка:
+// func (img *Image) IsLinkActive() bool {
+//     return img.Status == "pending"
+// }

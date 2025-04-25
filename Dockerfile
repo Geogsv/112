@@ -37,7 +37,7 @@
     
     # Копируем папку uploads (она будет пустой, но структура важна)
     # Реальные загрузки будут в volume
-    COPY --from=builder /app/upload ./upload
+    COPY --from=builder /app/uploads ./uploads
     
     # Указываем порт, который будет слушать приложение внутри контейнера
     EXPOSE 8080
