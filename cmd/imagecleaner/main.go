@@ -21,7 +21,7 @@ func getEnv(key, fallback string) string {
 }
 
 
-// checkAndCreateUploadsDir проверяет наличие папки uploads и создает ее при необходимости.
+
 // func checkAndCreateUploadsDir(uploadDir string) {
 // 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
 // 		log.Printf("Папка %s не найдена, создаем...", uploadDir)
