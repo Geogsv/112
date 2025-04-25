@@ -219,39 +219,63 @@ func HandleLogin(c *gin.Context) {
 
 // ShowUploadPage отображает страницу загрузки изображений.
 // Показывает имя пользователя и результаты предыдущей загрузки (из flash-сообщений).
+// Обработчик для страницы загрузки изображений
 func ShowUploadPage(c *gin.Context) {
 	session := sessions.Default(c)
-	username := session.Get("username") // Получаем имя пользователя из сессии
-	usernameStr, _ := username.(string) // Преобразуем в строку, игнорируя ошибку типа
+	username := session.Get("username")
+	usernameStr, _ := username.(string)
 
-	// Получаем flash-сообщения о результатах предыдущей загрузки
+	// Получаем flash сообщения
 	errorsFlash := session.Get("upload_errors")
 	successURLsFlash := session.Get("upload_success_urls")
+	log.Printf("DEBUG: Retrieved flash - ErrorsRaw: (%T) %v, SuccessURLsRaw: (%T) %v", errorsFlash, errorsFlash, successURLsFlash, successURLsFlash)
 
-	// Очищаем flash-сообщения из сессии
+
+	// --- НАДЕЖНОЕ ПРЕОБРАЗОВАНИЕ ТИПОВ ---
+	var errorMessages []string
+	// Проверяем, что errorsFlash не nil *ПЕРЕД* проверкой типа
+	if errorsFlash != nil {
+		if errs, ok := errorsFlash.([]string); ok {
+			errorMessages = errs
+            log.Printf("DEBUG: Parsed errors: %d items", len(errorMessages))
+		} else {
+			// Логируем ошибку типа, если значение есть, но тип не тот
+			log.Printf("WARNING: Unexpected type for 'upload_errors' in session: %T", errorsFlash)
+		}
+	} else {
+        log.Printf("DEBUG: No 'upload_errors' found in session.")
+    }
+
+
+	var successURLs []string
+	// Проверяем, что successURLsFlash не nil *ПЕРЕД* проверкой типа
+	if successURLsFlash != nil {
+		if urls, ok := successURLsFlash.([]string); ok {
+			successURLs = urls
+            log.Printf("DEBUG: Parsed success URLs: %d items", len(successURLs))
+		} else {
+			log.Printf("WARNING: Unexpected type for 'upload_success_urls' in session: %T", successURLsFlash)
+		}
+	} else {
+        log.Printf("DEBUG: No 'upload_success_urls' found in session.")
+    }
+	// --- КОНЕЦ НАДЕЖНОГО ПРЕОБРАЗОВАНИЯ ---
+
+
+	// Очищаем flash сообщения из сессии ПОСЛЕ их использования
 	session.Delete("upload_errors")
 	session.Delete("upload_success_urls")
-	err := session.Save()
-	if err != nil {
-		log.Printf("Ошибка сохранения сессии при очистке flash в ShowUploadPage: %v", err)
-	}
+	err := session.Save() // Сохраняем сессию, чтобы удаления применились
+    if err != nil {
+        log.Printf("ERROR: Failed to save session after clearing flash in ShowUploadPage: %v", err)
+    }
 
-	// Преобразуем flash-сообщения (которые имеют тип interface{}) в нужные слайсы строк
-	var errorMessages []string
-	if errs, ok := errorsFlash.([]string); ok { // Проверяем тип перед использованием
-		errorMessages = errs
-	}
-	var successURLs []string
-	if urls, ok := successURLsFlash.([]string); ok {
-		successURLs = urls
-	}
 
-	// Рендерим шаблон upload.html
 	c.HTML(http.StatusOK, "upload.html", gin.H{
 		"title":        "Загрузка изображения",
 		"username":     usernameStr,
-		"errors":       errorMessages, // Передаем слайс ошибок
-		"success_urls": successURLs,   // Передаем слайс успешных URL
+		"errors":       errorMessages, // Передаем слайсы (возможно, пустые)
+		"success_urls": successURLs,   // Передаем слайсы (возможно, пустые)
 	})
 }
 
